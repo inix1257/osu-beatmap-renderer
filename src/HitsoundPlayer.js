@@ -1,17 +1,7 @@
 import {
-  normal_hitnormal,
-  normal_hitwhistle,
-  normal_hitfinish,
-  normal_hitclap,
-  soft_hitnormal,
-  soft_hitwhistle,
-  soft_hitfinish,
-  soft_hitclap,
-  drum_hitnormal,
-  drum_hitwhistle,
-  drum_hitfinish,
-  drum_hitclap,
-} from "./soundAssets.js";
+  DEFAULT_BUNDLED_ASSET_BASE,
+  HITSOUND_SAMPLE_FILES,
+} from "./bundledAssetUrls.js";
 
 function lowerBound(arr, target) {
   let left = 0;
@@ -27,17 +17,8 @@ function lowerBound(arr, target) {
   return left;
 }
 
-/**
- * Decode a base64 data-URL string into an ArrayBuffer.
- */
-function dataUrlToArrayBuffer(dataUrl) {
-  const base64 = dataUrl.split(",")[1];
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
+function fileBaseName(file) {
+  return file.replace(/\.[^/.]+$/, "");
 }
 
 export class HitsoundPlayer {
@@ -45,8 +26,10 @@ export class HitsoundPlayer {
     hitsoundVolume = 0.3,
     schedulerIntervalMs = 20,
     schedulerLookaheadMs = 120,
+    assetBaseUrl = DEFAULT_BUNDLED_ASSET_BASE,
   } = {}) {
     this.hitsoundVolume = hitsoundVolume;
+    this.assetBaseUrl = assetBaseUrl.replace(/\/$/, "");
 
     this.schedulerIntervalMs = schedulerIntervalMs;
     this.schedulerLookaheadMs = schedulerLookaheadMs;
@@ -70,27 +53,18 @@ export class HitsoundPlayer {
       this.audioContext = new (window.AudioContext ||
         window.webkitAudioContext)();
 
-      // Bundled assets are base64 data URLs — decode directly without network fetch.
-      const assets = [
-        ["normal-hitnormal", normal_hitnormal],
-        ["normal-hitwhistle", normal_hitwhistle],
-        ["normal-hitfinish", normal_hitfinish],
-        ["normal-hitclap", normal_hitclap],
-        ["soft-hitnormal", soft_hitnormal],
-        ["soft-hitwhistle", soft_hitwhistle],
-        ["soft-hitfinish", soft_hitfinish],
-        ["soft-hitclap", soft_hitclap],
-        ["drum-hitnormal", drum_hitnormal],
-        ["drum-hitwhistle", drum_hitwhistle],
-        ["drum-hitfinish", drum_hitfinish],
-        ["drum-hitclap", drum_hitclap],
-      ];
-
       await Promise.all(
-        assets.map(async ([name, dataUrl]) => {
-          const arrayBuffer = dataUrlToArrayBuffer(dataUrl);
-          const audioBuffer =
-            await this.audioContext.decodeAudioData(arrayBuffer);
+        HITSOUND_SAMPLE_FILES.map(async (file) => {
+          const name = fileBaseName(file);
+          const url = `${this.assetBaseUrl}/${file}`;
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Hitsound fetch failed ${response.status}: ${url}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const audioBuffer = await this.audioContext.decodeAudioData(
+            arrayBuffer.slice(0),
+          );
           this.hitsoundBuffers.set(name, audioBuffer);
         }),
       );

@@ -7,12 +7,7 @@ import {
   perfectCurve,
   getReverseArrowAngle,
 } from "./SliderMath.js";
-import {
-  hitcircle as hitcircleDataUrl,
-  hitcircleoverlay as hitcircleoverlayDataUrl,
-  approachcircle as approachcircleDataUrl,
-  reversearrow as reversearrowDataUrl,
-} from "./skinAssets.js";
+import { DEFAULT_BUNDLED_ASSET_BASE } from "./bundledAssetUrls.js";
 import {
   getFollowPosition,
   getTimingPointAt,
@@ -36,6 +31,7 @@ export class BeatmapEngine {
    * @param {object} [options]
    * @param {string} [options.baseUrl=''] - Base URL prefix for legacy updateBeatmap/updateBeatmapBypass
    *   token-based endpoints (e.g. '' for same-origin, 'https://example.com').
+   * @param {string} [options.assetBaseUrl] - Base URL for bundled skin/hitsound assets (default: GitHub raw `assets/`).
    */
   constructor(container, options = {}) {
     if (typeof container === "string") {
@@ -52,6 +48,7 @@ export class BeatmapEngine {
     }
 
     this.baseUrl = options.baseUrl ?? "";
+    this.assetBaseUrl = options.assetBaseUrl ?? DEFAULT_BUNDLED_ASSET_BASE;
 
     this.app = null;
     this.textures = null;
@@ -109,6 +106,7 @@ export class BeatmapEngine {
     this.textures = await this.loadAssets();
     this.hitsoundPlayer = new HitsoundPlayer({
       hitsoundVolume: this.hitsoundVolume,
+      assetBaseUrl: this.assetBaseUrl,
     });
     await this.hitsoundPlayer.init();
     this.audioContext = this.hitsoundPlayer.audioContext;
@@ -1505,10 +1503,13 @@ export class BeatmapEngine {
   // ---------------------------------------------------------------------------
 
   async loadAssets() {
-    const texture_approach = await Assets.load(approachcircleDataUrl);
-    const texture_hitcircle = await Assets.load(hitcircleDataUrl);
-    const texture_hitcircleoverlay = await Assets.load(hitcircleoverlayDataUrl);
-    const texture_reverse = await Assets.load(reversearrowDataUrl);
+    const base = this.assetBaseUrl.replace(/\/$/, "");
+    const texture_approach = await Assets.load(`${base}/approachcircle.png`);
+    const texture_hitcircle = await Assets.load(`${base}/hitcircle.png`);
+    const texture_hitcircleoverlay = await Assets.load(
+      `${base}/hitcircleoverlay.png`,
+    );
+    const texture_reverse = await Assets.load(`${base}/reversearrow.png`);
     this.applyLinearTextureFiltering(texture_approach);
     this.applyLinearTextureFiltering(texture_hitcircle);
     this.applyLinearTextureFiltering(texture_hitcircleoverlay);
