@@ -1,6 +1,6 @@
 {
   "name": "osu-beatmap-renderer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone osu! beatmap renderer powered by PixiJS. Parses .osu files and renders hit objects with hitsounds.",
   "type": "module",
   "main": "dist/osu-beatmap-renderer.js",
@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite --config vite.demo.config.js"
   },
   "peerDependencies": {
     "pixi.js": ">=7.0.0"
