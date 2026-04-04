@@ -6,7 +6,7 @@
  */
 export function parseOsuText(text) {
   try {
-    const lines = text.split("\n");
+    const lines = text.split(/\r?\n/);
     const result = {};
     let currentSection = "";
 
@@ -97,6 +97,9 @@ export function parseOsuText(text) {
             }
           }
         } else {
+          if (!currentSection || !result[currentSection]) {
+            return;
+          }
           const [key, value] = line.split(":").map((part) => part.trim());
           if (key && value) {
             if (value.includes(",")) {

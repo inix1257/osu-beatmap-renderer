@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+
+# Local-only demo (not pushed)
+demo/
+vite.demo.config.js
