@@ -8,6 +8,7 @@ import {
   getReverseArrowAngle,
 } from "./SliderMath.js";
 import { DEFAULT_BUNDLED_ASSET_BASE } from "./bundledAssetUrls.js";
+import { getGlobalAudioOffsetMs } from "./AudioTimingConfig.js";
 import {
   getFollowPosition,
   getTimingPointAt,
@@ -32,6 +33,7 @@ export class BeatmapEngine {
    * @param {string} [options.baseUrl=''] - Base URL prefix for legacy updateBeatmap/updateBeatmapBypass
    *   token-based endpoints (e.g. '' for same-origin, 'https://example.com').
    * @param {string} [options.assetBaseUrl] - Base URL for bundled skin/hitsound assets (default: GitHub raw `assets/`).
+   * @param {number} [options.audioOffsetMs] - Initial audio offset in ms (default: global value from AudioTimingConfig).
    */
   constructor(container, options = {}) {
     if (typeof container === "string") {
@@ -76,7 +78,10 @@ export class BeatmapEngine {
     this.beatmapDurationMs = 0;
     this.previewTimeMs = 0;
 
-    this.audioOffsetMs = 0;
+    this.audioOffsetMs =
+      options.audioOffsetMs !== undefined
+        ? Number(options.audioOffsetMs) || 0
+        : getGlobalAudioOffsetMs();
 
     this.audioSyncOffsetMs = 0;
     this.lastAudioSyncSamplePerfMs = 0;

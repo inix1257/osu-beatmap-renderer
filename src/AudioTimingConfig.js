@@ -1,4 +1,4 @@
-const DEFAULT_AUDIO_OFFSET_MS = 80;
+const DEFAULT_AUDIO_OFFSET_MS = 100;
 
 let globalAudioOffsetMs = DEFAULT_AUDIO_OFFSET_MS;
 const listeners = new Set();
