@@ -2,6 +2,5 @@ node_modules/
 dist/
 .DS_Store
 
-# Local-only demo (not pushed)
-demo/
-vite.demo.config.js
+# One-off IIFE build with Pixi bundled (not produced by any config here)
+dist-standalone/

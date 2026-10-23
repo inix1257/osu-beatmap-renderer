@@ -1,6 +1,6 @@
 {
   "name": "osu-beatmap-renderer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Standalone osu! beatmap renderer powered by PixiJS. Parses .osu files and renders hit objects with hitsounds.",
   "type": "module",
   "main": "dist/osu-beatmap-renderer.js",

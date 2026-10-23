@@ -23,6 +23,7 @@ const FADE_OUT_MS = 250;
 const AUDIO_SYNC_SAMPLE_INTERVAL_MS = 200;
 const SLIDER_BODY_ALPHA = 0.9;
 const APPROACH_CIRCLE_Z_BASE = 1_000_000_000;
+const BACKGROUND_Z_INDEX = -APPROACH_CIRCLE_Z_BASE;
 const SLIDER_BODY_DARKEN_FACTOR = 0.7;
 const SLIDER_RT_OVERSAMPLE = 2;
 
@@ -105,7 +106,7 @@ export class BeatmapEngine {
     this.containerEl.appendChild(this.app.canvas);
 
     this.backgroundSprite = new PIXI.Sprite();
-    this.backgroundSprite.zIndex = -999999;
+    this.backgroundSprite.zIndex = BACKGROUND_Z_INDEX;
     this.app.stage.addChild(this.backgroundSprite);
 
     this.textures = await this.loadAssets();

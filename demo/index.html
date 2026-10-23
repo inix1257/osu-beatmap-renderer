@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>osu-beatmap-renderer — dev</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        color: #e8e8e8;
+        background: #121212;
+      }
+      body {
+        margin: 0;
+        padding: 1rem;
+        max-width: 960px;
+      }
+      h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 0 0 1rem;
+      }
+      .panel {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+        align-items: flex-end;
+        margin-bottom: 1rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.8rem;
+        color: #b0b0b0;
+        flex: 0 1 12rem;
+      }
+      label input[type="text"] {
+        padding: 0.4rem 0.5rem;
+        border-radius: 6px;
+        border: 1px solid #444;
+        background: #1e1e1e;
+        color: inherit;
+        font: inherit;
+      }
+      button {
+        padding: 0.45rem 0.85rem;
+        cursor: pointer;
+        border-radius: 6px;
+        border: 1px solid #444;
+        background: #2a2a2a;
+        color: inherit;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: #3d5a80;
+        border-color: #4a6fa5;
+      }
+      #renderer {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        max-height: 70vh;
+        background: #000;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      #status {
+        margin-top: 0.75rem;
+        font-size: 0.85rem;
+        color: #c4c4c4;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>osu-beatmap-renderer (local dev)</h1>
+    <div class="panel">
+      <label>
+        Beatmap ID
+        <input
+          id="beatmapId"
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          placeholder="e.g. 5499289"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <label>
+        Offset (ms)
+        <input
+          id="offsetMs"
+          type="number"
+          step="1"
+          value="100"
+          style="width:5rem"
+        />
+      </label>
+      <button type="button" id="loadBtn" class="primary" disabled>Load</button>
+      <button type="button" id="playBtn" disabled>Play</button>
+      <button type="button" id="pauseBtn" disabled>Pause</button>
+    </div>
+    <div id="renderer"></div>
+    <div id="status"></div>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
