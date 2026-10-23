@@ -48,3 +48,5 @@ npm test
 Built bundle: `dist/osu-beatmap-renderer.js`.
 
 Run the demo page from a clone: `npm run dev` (uses `demo/` + `vite.demo.config.js`; not published to npm).
+
+Try a local build in another site: `npm run serve` rebuilds `dist/` on every change and serves it at `http://127.0.0.1:5174/osu-beatmap-renderer.js` with CORS and local network access headers. For osu! Expert+, build it with `OEP_RENDERER_URL=http://127.0.0.1:5174/osu-beatmap-renderer.js npm run build`.

@@ -26,6 +26,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite --config vite.demo.config.js",
+    "serve": "node scripts/serve-dist.mjs",
     "test": "node --test \"test/**/*.test.js\""
   },
   "peerDependencies": {
