@@ -68,7 +68,11 @@ loadBtn.addEventListener("click", async () => {
   try {
     if (!engine) {
       const audioOffsetMs = Number(offsetInput.value) || 0;
-      engine = new BeatmapEngine("renderer", { audioOffsetMs });
+      // b.ppy.sh/preview is a ~10 s clip from PreviewTime.
+      engine = new BeatmapEngine("renderer", {
+        audioOffsetMs,
+        previewClip: { maxDurationMs: 10000 },
+      });
       await engine.init();
     }
 

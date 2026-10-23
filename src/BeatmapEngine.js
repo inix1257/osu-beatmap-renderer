@@ -9,6 +9,7 @@ import {
 } from "./SliderMath.js";
 import { DEFAULT_BUNDLED_ASSET_BASE } from "./bundledAssetUrls.js";
 import { getGlobalAudioOffsetMs } from "./AudioTimingConfig.js";
+import { BACKGROUND_FITS, fitBackground } from "./backgroundLayout.js";
 import {
   getFollowPosition,
   getTimingPointAt,
@@ -35,6 +36,14 @@ export class BeatmapEngine {
    *   token-based endpoints (e.g. '' for same-origin, 'https://example.com').
    * @param {string} [options.assetBaseUrl] - Base URL for bundled skin/hitsound assets (default: GitHub raw `assets/`).
    * @param {number} [options.audioOffsetMs] - Initial audio offset in ms (default: global value from AudioTimingConfig).
+   * @param {string|null} [options.audioCrossOrigin="anonymous"] - `crossOrigin` of the audio element.
+   *   `null` leaves it unset, for audio hosts that send no CORS headers.
+   * @param {boolean|{maxDurationMs?: number}|null} [options.previewClip=null] - The audio is a clip that
+   *   starts at the beatmap's PreviewTime and covers only part of the map (e.g. osu!'s ~10 s preview MP3).
+   *   Outside the clip the audio stays paused and the map plays on silently. `maxDurationMs` caps the
+   *   clip length and is used until the audio's duration is known. Off by default.
+   * @param {"cover"|"contain"} [options.backgroundFit="cover"] - How the background image fits the canvas.
+   * @param {number} [options.backgroundTint=0xffffff] - Tint of the background image (0xffffff = none).
    */
   constructor(container, options = {}) {
     if (typeof container === "string") {
@@ -52,6 +61,17 @@ export class BeatmapEngine {
 
     this.baseUrl = options.baseUrl ?? "";
     this.assetBaseUrl = options.assetBaseUrl ?? DEFAULT_BUNDLED_ASSET_BASE;
+    this.audioCrossOrigin =
+      options.audioCrossOrigin === undefined
+        ? "anonymous"
+        : options.audioCrossOrigin;
+    this.previewClip = normalizePreviewClip(options.previewClip);
+    this.backgroundFit = BACKGROUND_FITS.includes(options.backgroundFit)
+      ? options.backgroundFit
+      : "cover";
+    this.backgroundTint = Number.isFinite(options.backgroundTint)
+      ? options.backgroundTint
+      : 0xffffff;
 
     this.app = null;
     this.textures = null;
@@ -73,6 +93,8 @@ export class BeatmapEngine {
     this.transportStartAudioTime = 0;
     this.currentTime = 0;
     this.isPlaying = false;
+    /** Whether the current `play()` asked for music (preview clip mode starts it on entering the clip). */
+    this.musicEnabled = false;
     this.resumeOnGestureListenerAttached = false;
     this.lastTickTime = null;
     this.previewAudio = null;
@@ -247,10 +269,14 @@ export class BeatmapEngine {
       this.previewAudio.pause();
       this.previewAudio.src = "";
     }
-    this.previewAudio = new Audio(audioUrl);
-    this.previewAudio.preload = "auto";
-    this.previewAudio.volume = this.musicVolume;
-    this.previewAudio.crossOrigin = "anonymous";
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.volume = this.musicVolume;
+    if (this.audioCrossOrigin != null) {
+      audio.crossOrigin = this.audioCrossOrigin;
+    }
+    audio.src = audioUrl;
+    this.previewAudio = audio;
   }
 
   /** @deprecated Use updateAudioTrackFromUrl */
@@ -282,17 +308,38 @@ export class BeatmapEngine {
 
       const texture = PIXI.Texture.from(img);
       this.applyLinearTextureFiltering(texture);
-      const { width, height } = this.getDisplayDimensions();
-      const scaleX = width / texture.width;
-      const scaleY = height / texture.height;
-      const scale = Math.max(scaleX, scaleY);
       this.backgroundSprite.texture = texture;
-      this.backgroundSprite.scale.set(scale);
-      this.backgroundSprite.x = (width - texture.width * scale) / 2;
-      this.backgroundSprite.y = (height - texture.height * scale) / 2;
+      this.layoutBackground();
     } catch (_error) {
       this.backgroundSprite.texture = null;
     }
+  }
+
+  /** Fit the background to the canvas (`backgroundFit`) and apply `backgroundTint`. */
+  layoutBackground() {
+    const sprite = this.backgroundSprite;
+    const texture = sprite?.texture;
+    if (
+      !sprite ||
+      !texture ||
+      texture === PIXI.Texture.EMPTY ||
+      !texture.width ||
+      !texture.height
+    ) {
+      return;
+    }
+    const { width, height } = this.getDisplayDimensions();
+    const { scale, x, y } = fitBackground(
+      this.backgroundFit,
+      texture.width,
+      texture.height,
+      width,
+      height,
+    );
+    sprite.scale.set(scale);
+    sprite.x = x;
+    sprite.y = y;
+    sprite.tint = this.backgroundTint;
   }
 
   /** @deprecated Use updateBackgroundFromUrl */
@@ -324,6 +371,7 @@ export class BeatmapEngine {
       ? this.audioContext.currentTime
       : 0;
     this.isPlaying = true;
+    this.musicEnabled = enableMusic;
     this.audioSyncOffsetMs = 0;
     this.lastAudioSyncSamplePerfMs = 0;
     this.lastTickTime = performance.now();
@@ -337,7 +385,10 @@ export class BeatmapEngine {
         const resumeOnGesture = () => {
           this.resumeOnGestureListenerAttached = false;
           this.audioContext?.resume().catch(() => {});
-          if (enableMusic) {
+          if (
+            enableMusic &&
+            !this.isOutsidePreviewClip(this.getCurrentTime())
+          ) {
             this.previewAudio?.play().catch(() => {});
           }
         };
@@ -353,7 +404,9 @@ export class BeatmapEngine {
         this.currentTime,
       );
       this.previewAudio.currentTime = Math.max(0, shiftedMs) / 1000;
-      if (enableMusic) {
+      // Outside a preview clip the audio would start at the wrong place (the
+      // browser clamps currentTime); syncPreviewClipAudio starts it later.
+      if (enableMusic && !this.isOutsidePreviewClip(this.currentTime)) {
         this.previewAudio.play().catch(() => {});
       } else {
         this.previewAudio.pause();
@@ -375,13 +428,19 @@ export class BeatmapEngine {
     if (!this.isPlaying) {
       return;
     }
-    this.currentTime = this.getTransportCurrentTimeMs();
-    this.isPlaying = false;
-    this.hitsoundPlayer?.stopScheduler();
-    this.hitsoundPlayer?.clearScheduledSources();
+    // Pause the audio first: with the audio still playing, the snapshot below
+    // could take a fresh drift sample from it on this very tick, which jumps
+    // the time when the audio clock is off (ended, clamped by the browser).
+    // The snapshot keeps the current sync offset, i.e. the time on screen.
     if (this.previewAudio) {
       this.previewAudio.pause();
     }
+    this.currentTime = this.getTransportCurrentTimeMs();
+    this.isPlaying = false;
+    this.audioSyncOffsetMs = 0;
+    this.lastAudioSyncSamplePerfMs = 0;
+    this.hitsoundPlayer?.stopScheduler();
+    this.hitsoundPlayer?.clearScheduledSources();
   }
 
   getCurrentTime() {
@@ -422,7 +481,13 @@ export class BeatmapEngine {
       );
       this.previewAudio.currentTime = Math.max(0, shiftedMs) / 1000;
 
-      if (this.isPlaying && !this.previewAudio.paused) {
+      if (this.isOutsidePreviewClip(this.currentTime)) {
+        // Reading the clamped audio position back would snap the time to the
+        // clip edge (e.g. back to PreviewTime when seeking before it).
+        this.previewAudio.pause();
+        this.audioSyncOffsetMs = 0;
+        this.lastAudioSyncSamplePerfMs = 0;
+      } else if (this.isPlaying && !this.previewAudio.paused) {
         const audioDerivedVisualMs = this.getBeatmapTimeMsForPreviewAudioTime(
           this.previewAudio.currentTime * 1000,
         );
@@ -441,6 +506,9 @@ export class BeatmapEngine {
     this.resetHitsoundPlaybackFlags();
     this.hitsoundPlayer?.resetFromCurrentTime(this.currentTime);
     this.resetActiveObjects();
+    if (this.isPlaying) {
+      this.syncPreviewClipAudio();
+    }
   }
 
   seek(ms) {
@@ -496,6 +564,110 @@ export class BeatmapEngine {
       );
       this.previewAudio.currentTime = Math.max(0, shiftedMs) / 1000;
     }
+    if (this.isPlaying) {
+      this.syncPreviewClipAudio();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rendering and preview clip
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Start or stop drawing frames, e.g. while the renderer is hidden. The
+   * transport keeps its time; pause first, since preview clip audio is synced
+   * from the frame loop.
+   * @param {boolean} on
+   */
+  setRendering(on) {
+    const ticker = this.app?.ticker;
+    if (!ticker) return;
+    if (on) {
+      if (!ticker.started) ticker.start();
+    } else if (ticker.started) {
+      ticker.stop();
+    }
+  }
+
+  /** @returns {boolean} whether frames are being drawn */
+  isRendering() {
+    return !!this.app?.ticker?.started;
+  }
+
+  /**
+   * Length in ms of the beatmap span the audio covers, from PreviewTime: the
+   * audio's duration, capped by `previewClip.maxDurationMs`. Before the
+   * duration is known it is the cap (Infinity without one); 0 without audio.
+   * @returns {number}
+   */
+  getPreviewClipDurationMs() {
+    const audio = this.previewAudio;
+    if (!audio) return 0;
+    const capMs = this.previewClip?.maxDurationMs ?? Infinity;
+    const durationSec = audio.duration;
+    if (
+      audio.readyState >= 1 &&
+      Number.isFinite(durationSec) &&
+      durationSec > 0
+    ) {
+      return Math.min(capMs, durationSec * 1000);
+    }
+    return capMs;
+  }
+
+  /**
+   * Whether the audio has sound for beatmap time `beatmapTimeMs`.
+   * @param {number} beatmapTimeMs
+   * @returns {boolean}
+   */
+  isTimeInPreviewClip(beatmapTimeMs) {
+    if (!this.previewAudio || !Number.isFinite(beatmapTimeMs)) return false;
+    const audioMs = this.getPreviewAudioTimeMsForBeatmapTime(beatmapTimeMs);
+    return (
+      Number.isFinite(audioMs) &&
+      audioMs >= 0 &&
+      audioMs < this.getPreviewClipDurationMs()
+    );
+  }
+
+  /**
+   * Preview clip mode only: whether `beatmapTimeMs` lies outside the audio.
+   * Always false when the mode is off, so 0.1.x behaviour is unchanged.
+   * @param {number} beatmapTimeMs
+   */
+  isOutsidePreviewClip(beatmapTimeMs) {
+    return (
+      !!this.previewClip &&
+      !!this.previewAudio &&
+      Number.isFinite(beatmapTimeMs) &&
+      !this.isTimeInPreviewClip(beatmapTimeMs)
+    );
+  }
+
+  /**
+   * Preview clip mode, while playing: start the audio on entering the clip
+   * and pause it on leaving, so the map plays on silently around it.
+   */
+  syncPreviewClipAudio() {
+    const audio = this.previewAudio;
+    if (!this.previewClip || !audio || !this.isPlaying) return;
+    const t = this.getTransportCurrentTimeMs();
+    if (!this.isTimeInPreviewClip(t)) {
+      if (!audio.paused) audio.pause();
+      return;
+    }
+    if (!this.musicEnabled || !audio.paused || audio.ended) return;
+    const clipSec = this.getPreviewClipDurationMs() / 1000;
+    const targetSec = Math.min(
+      Math.max(0, this.getPreviewAudioTimeMsForBeatmapTime(t) / 1000),
+      Math.max(0, clipSec - 0.001),
+    );
+    // Only seek when it is off, so a blocked play() retried every frame does
+    // not also seek every frame.
+    if (Math.abs(audio.currentTime - targetSec) > 0.12) {
+      audio.currentTime = targetSec;
+    }
+    audio.play().catch(() => {});
   }
 
   // ---------------------------------------------------------------------------
@@ -560,16 +732,7 @@ export class BeatmapEngine {
       this.app.renderer.resolution = dpr;
     }
     this.app.renderer.resize(width, height);
-    if (this.backgroundSprite?.texture) {
-      const scaleX = width / this.backgroundSprite.texture.width;
-      const scaleY = height / this.backgroundSprite.texture.height;
-      const scale = Math.max(scaleX, scaleY);
-      this.backgroundSprite.scale.set(scale);
-      this.backgroundSprite.x =
-        (width - this.backgroundSprite.texture.width * scale) / 2;
-      this.backgroundSprite.y =
-        (height - this.backgroundSprite.texture.height * scale) / 2;
-    }
+    this.layoutBackground();
     this.rebuildHitObjectVisualsForResize();
   }
 
@@ -591,6 +754,7 @@ export class BeatmapEngine {
     if (!this.app || !this.beatmap || !this.beatmap.HitObjects) {
       return;
     }
+    this.syncPreviewClipAudio();
 
     this.currentTime = this.isPlaying
       ? this.getTransportCurrentTimeMs()
@@ -1736,6 +1900,22 @@ export class BeatmapEngine {
     const elapsedMs = nowPerfMs - this.transportStartPerfTime;
     const perfVisualMs = this.transportStartMs + Math.max(0, elapsedMs);
     if (
+      this.previewClip &&
+      this.previewAudio &&
+      (this.previewAudio.ended || this.isOutsidePreviewClip(perfVisualMs))
+    ) {
+      // Outside the clip the audio clock means nothing: run on the
+      // performance clock and fold the last correction into its start.
+      const visualMs = perfVisualMs + (Number(this.audioSyncOffsetMs) || 0);
+      if (this.audioSyncOffsetMs) {
+        this.transportStartMs = visualMs;
+        this.transportStartPerfTime = nowPerfMs;
+        this.audioSyncOffsetMs = 0;
+        this.lastAudioSyncSamplePerfMs = 0;
+      }
+      return visualMs;
+    }
+    if (
       this.previewAudio &&
       !this.previewAudio.paused &&
       Number.isFinite(this.previewAudio.currentTime)
@@ -1779,6 +1959,17 @@ export class BeatmapEngine {
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The `previewClip` option as `{ maxDurationMs }`, or null when off.
+ * @param {unknown} value
+ * @returns {{ maxDurationMs: number } | null}
+ */
+function normalizePreviewClip(value) {
+  if (!value) return null;
+  const cap = Number(value === true ? undefined : value.maxDurationMs);
+  return { maxDurationMs: Number.isFinite(cap) && cap > 0 ? cap : Infinity };
+}
 
 function lowerBound(arr, target) {
   let left = 0;
